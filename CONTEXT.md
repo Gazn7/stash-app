@@ -12,18 +12,18 @@ Lingua UI: italiano. Demo mode con €100 di credito fittizio.
 | Layer | Tecnologia |
 |---|---|
 | Frontend | HTML/CSS/JS vanilla — single file (`index.html`) |
-| Database | **Supabase** (PostgreSQL via REST API, no SDK) |
+| Database | PostgreSQL standard via API Vercel `/api/rest/v1/:table` |
 | Realtime | Polling ogni 3 secondi (`setInterval`) |
 | Auth | Custom (username + password in chiaro su tabella `users`) |
 | Pagamenti | Placeholder Mangopay (non integrato) |
 | Font | DM Sans (Google Fonts) + Arial Black per titoli |
-| Deploy | GitHub + repository `stash-app` |
+| Deploy | Vercel + Postgres esterno standard |
 
 ---
 
-## Schema database Supabase
+## Schema database
 
-**Progetto:** `fipgbniotxinkuzgcsgr.supabase.co`
+Schema SQL versionato in `db/schema.sql`. Richiede `POSTGRES_URL` o `DATABASE_URL`.
 
 ### Tabelle
 
@@ -77,7 +77,7 @@ history
   created_at   bigint
 ```
 
-> ⚠️ RLS disabilitato su tutte le tabelle (visibile nello screenshot Supabase).
+API compatibility layer: `api/rest/v1/[table].js`.
 
 ---
 
@@ -113,10 +113,10 @@ SEL_CHALLENGED  // { uid, name } — avversario selezionato
 CH_TIMEOUT  // secondi timeout sfida (default 3600)
 ```
 
-### Pattern API Supabase (no SDK)
+### Pattern API backend
 ```js
-supaGet(table, filter)         // GET
-supaUpsert(table, data)        // POST con merge-duplicates
+supaGet(table, filter)         // GET /api/rest/v1/:table
+supaUpsert(table, data)        // POST con upsert server-side
 supaPatch(table, filter, data) // PATCH
 supaDelete(table, filter)      // DELETE
 ```

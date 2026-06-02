@@ -318,6 +318,7 @@ textarea.form-input{resize:none;height:88px}
 <div class="phone" id="app">
 
 <div id="global-notif" onclick="handleGlobalNotif()"><span id="gn-icon"></span><span id="gn-text"></span></div>
+<div id="backend-status" style="display:none;position:fixed;top:48px;left:14px;right:14px;z-index:9997;max-width:390px;margin:0 auto;background:var(--red-dim);border:1px solid var(--red);border-radius:4px;color:var(--text);padding:10px 12px;font-size:12px;line-height:1.35"></div>
 
 <!-- ===== WELCOME / AUTH ===== -->
 <div class="screen active" id="s-welcome">
@@ -379,15 +380,14 @@ textarea.form-input{resize:none;height:88px}
 
 <script>
 // ===== AUTH — self-contained, no main script dependency =====
-var SUPA_URL_AUTH = 'https://fipgbniotxinkuzgcsgr.supabase.co';
-var SUPA_KEY_AUTH = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpcGdibmlvdHhpbmt1emdjc2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxOTEwNDYsImV4cCI6MjA5MTc2NzA0Nn0.Mi3rNaNaJreR1nR5PXBbqlBIdV-XLkO21K27hzPeJg8';
+var API_BASE_AUTH = '/api/rest/v1';
 
 function authHeaders() {
-  return {'apikey':SUPA_KEY_AUTH,'Authorization':'Bearer '+SUPA_KEY_AUTH,'Content-Type':'application/json'};
+  return {'Content-Type':'application/json'};
 }
 
 function authFetch(table, filter, method, body, cb) {
-  var url = SUPA_URL_AUTH + '/rest/v1/' + table + (filter ? '?' + filter : '');
+  var url = API_BASE_AUTH + '/' + table + (filter ? '?' + filter : '');
   var opts = {method: method||'GET', headers: authHeaders()};
   if(method==='POST') opts.headers['Prefer']='resolution=merge-duplicates,return=representation';
   if(method==='PATCH') opts.headers['Prefer']='return=representation';
@@ -720,7 +720,7 @@ document.getElementById('signup-btn').onclick = function() {
   </div>
   <div class="info-box info-amber" style="margin-bottom:20px"><strong id="acc-timer-lbl">⏱ Scade tra 47:23</strong></div>
   <button class="btn-primary" id="acc-btn" onclick="acceptChallenge()">✅ Accetto la sfida</button>
-  <button class="btn-danger" onclick="go('s-group-custom')">Rifiuto</button>
+  <button class="btn-danger" onclick="rejectChallenge()">Rifiuto</button>
   <div style="height:36px"></div>
 </div>
 
@@ -1117,23 +1117,28 @@ if (!MY_UID) {
 }
 
 // ===== SUPABASE REST API =====
-var SUPA_URL = 'https://fipgbniotxinkuzgcsgr.supabase.co';
-var SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpcGdibmlvdHhpbmt1emdjc2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxOTEwNDYsImV4cCI6MjA5MTc2NzA0Nn0.Mi3rNaNaJreR1nR5PXBbqlBIdV-XLkO21K27hzPeJg8';
+var API_BASE = '/api/rest/v1';
 var pollInterval = null;
 var fbReady = false;
 var CURRENT_GROUP_ID = null;
 
 function supaFetch(path, method, body, prefer) {
-  var headers = {'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
+  var headers = {'Content-Type':'application/json'};
   if(prefer) headers['Prefer'] = prefer;
   var opts = {method:method||'GET', headers:headers};
   if(body) opts.body = JSON.stringify(body);
-  return fetch(SUPA_URL+'/rest/v1/'+path, opts);
+  return fetch(API_BASE+'/'+path, opts);
 }
 function supaGet(table,filter){return supaFetch(table+(filter?'?'+filter:''),'GET').then(function(r){return r.json();});}
 function supaUpsert(table,data){return supaFetch(table,'POST',data,'resolution=merge-duplicates,return=minimal');}
 function supaPatch(table,filter,data){return supaFetch(table+'?'+filter,'PATCH',data,'return=minimal');}
 function supaDelete(table,filter){return supaFetch(table+'?'+filter,'DELETE',null,null);}
+function setBackendStatus(msg){
+  var e=document.getElementById('backend-status');
+  if(!e)return;
+  if(msg){e.textContent=msg;e.style.display='block';}
+  else{e.style.display='none';e.textContent='';}
+}
 
 function fbSet(path,val){
   if(!path)return;
@@ -1243,8 +1248,9 @@ function pollSupabase(){
       }
     });
     STATE.users=users;
+    setBackendStatus('');
     onStateChange();
-  }).catch(function(e){console.error('pollSupabase users error:',e);});
+  }).catch(function(e){console.error('pollSupabase users error:',e);setBackendStatus('Backend demo non raggiungibile. Verifica URL Supabase o connessione.');});
 
   supaGet('challenges','id=eq.current').then(function(rows){
     if(!Array.isArray(rows)||!rows.length){
@@ -1382,12 +1388,72 @@ function getChMeta(){try{return JSON.parse(localStorage.getItem('stash_ch_meta')
 function getChType(){return getChMeta().type||'1v1';}
 function getChN(){return getChMeta().n||1;}
 
+function splitUids(str){
+  var out=[];
+  if(!str)return out;
+  var parts=String(str).split(',');
+  for(var i=0;i<parts.length;i++){
+    var uid=parts[i].trim();
+    if(uid)out.push(uid);
+  }
+  return out;
+}
+function challengeParticipantUids(ch){
+  var out=[];
+  if(!ch)return out;
+  if(ch.challengerUid)out.push(ch.challengerUid);
+  var others=splitUids(ch.challengedUid);
+  for(var i=0;i<others.length;i++){
+    if(out.indexOf(others[i])===-1)out.push(others[i]);
+  }
+  return out;
+}
+function nameForUid(uid,fallback){
+  if(uid===MY_UID&&MY_NAME)return MY_NAME;
+  var u=STATE.users[uid];
+  if(u&&u.name)return u.name;
+  return fallback||uid||'';
+}
+function challengeNameForUid(ch,uid){
+  if(!ch||!uid)return '';
+  if(uid===ch.challengerUid)return ch.challengerName||nameForUid(uid);
+  var uids=splitUids(ch.challengedUid);
+  var names=String(ch.challengedName||'').split(',');
+  for(var i=0;i<uids.length;i++){
+    if(uids[i]===uid)return (names[i]||'').trim()||nameForUid(uid);
+  }
+  return nameForUid(uid);
+}
+function challengeBelongsToGroup(ch,group){
+  if(!ch||!group||!group.members)return false;
+  var uids=challengeParticipantUids(ch);
+  if(!uids.length)return false;
+  for(var i=0;i<uids.length;i++){
+    if(!Object.prototype.hasOwnProperty.call(group.members,uids[i]))return false;
+  }
+  return true;
+}
+function stakeForUid(ch,uid){
+  if(!ch||!uid)return 0;
+  var amt=parseFloat(ch.amount)||0;
+  var type=ch.type||'1v1';
+  if(uid===ch.challengerUid)return amt;
+  if(type==='1vall'){
+    var n=splitUids(ch.challengedUid).length||1;
+    return Math.round((amt/n)*100)/100;
+  }
+  return amt;
+}
+function totalPotForChallenge(ch){
+  var uids=challengeParticipantUids(ch);
+  var total=0;
+  for(var i=0;i<uids.length;i++)total+=stakeForUid(ch,uids[i]);
+  return Math.round(total*100)/100;
+}
 function isParticipant(ch){
   if(!ch)return false;
-  if(ch.challengerUid===MY_UID)return true;
-  if(!ch.challengedUid)return false;
-  var parts=ch.challengedUid.split(',');
-  for(var i=0;i<parts.length;i++){if(parts[i].trim()===MY_UID)return true;}
+  var uids=challengeParticipantUids(ch);
+  for(var i=0;i<uids.length;i++){if(uids[i]===MY_UID)return true;}
   return false;
 }
 
@@ -1568,7 +1634,7 @@ function drawHome() {
     banner.style.display='block';
     banner.innerHTML = notifHTML(ch.challengerName, ch.title, ch.amount);
     fillAcceptScreen(ch);
-  } else if (ch && ch.status==='accepted' && (ch.challengerUid===MY_UID||ch.challengedUid===MY_UID)) {
+  } else if (ch && ch.status==='accepted' && isParticipant(ch)) {
     banner.style.display='block';
     var vDest=ch.type&&ch.type!=='1v1'?'s-vote-group':'s-vote1v1';
     banner.innerHTML = '<div class="notif-banner" style="cursor:default"><div>&#x1F534;</div><div class="notif-text">Sfida live &mdash; &euro;'+ch.amount+' in palio</div><div class="notif-cta" onclick="go(\''+vDest+'\')">Dichiara &rarr;</div></div>';
@@ -1612,9 +1678,7 @@ function drawGroups() {
 
     var hasLive = ch &&
       (ch.status==='pending'||ch.status==='accepted') &&
-      g2.members &&
-      Object.prototype.hasOwnProperty.call(g2.members, ch.challengerUid) &&
-      Object.prototype.hasOwnProperty.call(g2.members, ch.challengedUid);
+      challengeBelongsToGroup(ch,g2);
 
     var card = document.createElement('div');
     card.className = 'card card-tap';
@@ -1933,9 +1997,7 @@ function drawCustomGroup() {
   var hasLiveForGroup = false;
 
   if(currentGroup && ch && (ch.status==='pending'||ch.status==='accepted') && currentGroup.members){
-    hasLiveForGroup =
-      Object.prototype.hasOwnProperty.call(currentGroup.members, ch.challengerUid) &&
-      Object.prototype.hasOwnProperty.call(currentGroup.members, ch.challengedUid);
+    hasLiveForGroup = challengeBelongsToGroup(ch,currentGroup);
   }
 
   if(hasLiveForGroup){
@@ -1982,11 +2044,51 @@ function groupMenuAction(action){
   for(var i=0;i<ids.length;i++){var c=el(ids[i]);if(c)c.style.display='none';}
   modal.style.display='block';
   if(action==='rename'){if(GROUP_CREATOR!==MY_UID){alert('Solo il creatore può modificare il nome.');modal.style.display='none';return;}setText('gam-title','Modifica nome');show('gam-rename-content');var inp=el('gam-new-name');var dn=el('cg-detail-name');if(inp&&dn)inp.value=dn.textContent;}
-  if(action==='add'){setText('gam-title','Aggiungi membro');show('gam-add-content');var al=el('gam-add-list');if(al){var h='';for(var uid in STATE.users){if(uid!==MY_UID)h+='<div class="member-row"><div class="av av-sm av-alex">'+initial(STATE.users[uid].name)+'</div><div class="member-name">'+STATE.users[uid].name+'</div><div style="font-size:12px;color:var(--accent)">Aggiunto ✓</div></div>';}al.innerHTML=h||'<div class="muted" style="padding:10px 0;font-size:13px">Nessun utente.</div>';}}
-  if(action==='remove'){if(GROUP_CREATOR!==MY_UID){alert('Solo il creatore può rimuovere membri.');modal.style.display='none';return;}setText('gam-title','Rimuovi membro');show('gam-remove-content');var rl=el('gam-remove-list');if(rl){var rh='';var group=STATE.groups[CURRENT_GROUP_ID];if(group&&group.members){for(var ruid in group.members){if(ruid!==MY_UID){var rname=group.members[ruid]||(STATE.users[ruid]?STATE.users[ruid].name:ruid);rh+='<div class="member-row"><div class="av av-sm av-alex">'+initial(rname)+'</div><div class="member-name">'+rname+'</div><button onclick="alert(\'Rimosso (demo).\');closeGroupModal()" style="background:var(--red);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer">Rimuovi</button></div>';}}}rl.innerHTML=rh||'<div class="muted" style="padding:10px 0">Nessun membro.</div>';}}
+  if(action==='add'){setText('gam-title','Aggiungi membro');show('gam-add-content');drawAddMemberList();}
+  if(action==='remove'){if(GROUP_CREATOR!==MY_UID){alert('Solo il creatore può rimuovere membri.');modal.style.display='none';return;}setText('gam-title','Rimuovi membro');show('gam-remove-content');drawRemoveMemberList();}
   if(action==='leave'){setText('gam-title','Esci dal gruppo');show('gam-leave-content');}
 }
 function closeGroupModal(){var m=el('group-action-modal');if(m)m.style.display='none';}
+function drawAddMemberList(){
+  var al=el('gam-add-list');if(!al)return;
+  var group=STATE.groups[CURRENT_GROUP_ID],h='',found=0;
+  for(var uid in STATE.users){
+    if(uid===MY_UID)continue;
+    if(group&&group.members&&Object.prototype.hasOwnProperty.call(group.members,uid))continue;
+    found++;
+    var u=STATE.users[uid];
+    h+='<div class="member-row"><div class="av av-sm av-alex">'+initial(u.name)+'</div><div class="member-name">'+(u.username?'@'+u.username:u.name)+'</div><button onclick="addMemberToCurrentGroup(\''+uid+'\')" style="background:var(--accent);color:#0E0B08;border:none;border-radius:var(--rs);padding:6px 12px;font-size:12px;font-weight:800;cursor:pointer">Aggiungi</button></div>';
+  }
+  al.innerHTML=found?h:'<div class="muted" style="padding:10px 0;font-size:13px">Nessun utente da aggiungere.</div>';
+}
+function addMemberToCurrentGroup(uid){
+  var group=STATE.groups[CURRENT_GROUP_ID],u=STATE.users[uid];
+  if(!group||!u)return;
+  if(!group.members)group.members={};
+  group.members[uid]=u.name;
+  supaUpsert('group_members',{group_id:CURRENT_GROUP_ID,uid:uid,name:u.name});
+  drawCustomGroup();drawGroups();drawAddMemberList();
+}
+function drawRemoveMemberList(){
+  var rl=el('gam-remove-list');if(!rl)return;
+  var rh='',group=STATE.groups[CURRENT_GROUP_ID],found=0;
+  if(group&&group.members){
+    for(var ruid in group.members){
+      if(ruid===MY_UID)continue;
+      found++;
+      var rname=group.members[ruid]||(STATE.users[ruid]?STATE.users[ruid].name:ruid);
+      rh+='<div class="member-row"><div class="av av-sm av-alex">'+initial(rname)+'</div><div class="member-name">'+rname+'</div><button onclick="removeMemberFromCurrentGroup(\''+ruid+'\')" style="background:var(--red);color:#fff;border:none;border-radius:var(--rs);padding:6px 12px;font-size:12px;cursor:pointer">Rimuovi</button></div>';
+    }
+  }
+  rl.innerHTML=found?rh:'<div class="muted" style="padding:10px 0">Nessun membro rimovibile.</div>';
+}
+function removeMemberFromCurrentGroup(uid){
+  var group=STATE.groups[CURRENT_GROUP_ID];
+  if(!group||!group.members)return;
+  delete group.members[uid];
+  supaDelete('group_members','group_id=eq.'+CURRENT_GROUP_ID+'&uid=eq.'+uid);
+  drawCustomGroup();drawGroups();drawRemoveMemberList();
+}
 function shareLink(){
   var url=window.location.href;
   var msg=encodeURIComponent('Sfidami su stash! Registrati qui: '+url+' e ricevi \u20ac100 di credito demo gratuito \uD83D\uDD25');
@@ -2004,7 +2106,21 @@ function copyShareLink(url){
   });
 }
 function confirmRename(){var nm=(el('gam-new-name')||{}).value||'';if(nm.trim().length<2)return;var group=STATE.groups[CURRENT_GROUP_ID];if(group){group.name=nm.trim();supaPatch('groups','id=eq.'+CURRENT_GROUP_ID,{name:nm.trim()});}drawCustomGroup();drawGroups();closeGroupModal();}
-function confirmLeaveGroup(){closeGroupModal();go('s-home');}
+function confirmLeaveGroup(){
+  var gid=CURRENT_GROUP_ID,group=STATE.groups[gid];
+  if(!gid||!group){closeGroupModal();go('s-home');return;}
+  if(group.creatorUid===MY_UID){
+    supaDelete('group_members','group_id=eq.'+gid);
+    supaDelete('groups','id=eq.'+gid);
+    delete STATE.groups[gid];
+  }else{
+    if(group.members)delete group.members[MY_UID];
+    supaDelete('group_members','group_id=eq.'+gid+'&uid=eq.'+MY_UID);
+  }
+  CURRENT_GROUP_ID=null;
+  closeGroupModal();
+  go('s-home');
+}
 
 // ===== PAYMENT =====
 function selectPayment(e2,type){
@@ -2278,7 +2394,7 @@ function launchChallenge(){
     }
     localStorage.setItem('stash_ch_meta',JSON.stringify({type:CH_TYPE,n:N}));
     supaUpsert('challenges',{id:'current',title:txt,amount:amt,challenger_uid:MY_UID,challenger_name:MY_NAME,challenged_uid:challengedUidStr,challenged_name:challengedNameStr,status:'accepted',timer_start:timerStart,timeout:CH_TIMEOUT,created_at:timerStart,winner_uid:null,type:CH_TYPE});
-    var tLabel='';
+    var tLabel=CH_TIMEOUT>=86400?'24 ore':CH_TIMEOUT>=43200?'12 ore':'1 ora';
     setText('suc-other',challengedNameStr); setText('suc-other2',challengedNameStr);
     setText('suc-amount','€'+amt); setText('suc-timeout',tLabel);
   }
@@ -2303,6 +2419,21 @@ function acceptChallenge(){
   setBal(MY_UID,bal-ch.amount); setEsc(MY_UID,myEsc()+ch.amount);
   supaPatch('challenges','id=eq.current',{status:'accepted'});
   go('s-vote1v1');
+}
+
+function rejectChallenge(){
+  var ch=STATE.challenge;
+  if(!ch||ch.status!=='pending'||ch.challengedUid!==MY_UID){go('s-group-custom');return;}
+  var amt=parseFloat(ch.amount)||0;
+  if(ch.challengerUid){
+    setBal(ch.challengerUid,getBal(ch.challengerUid)+amt);
+    setEsc(ch.challengerUid,Math.max(0,(STATE.users[ch.challengerUid]?STATE.users[ch.challengerUid].escrow:0)-amt));
+  }
+  supaUpsert('history',{id:'h'+Date.now(),title:ch.title,amount:amt,challenger_uid:ch.challengerUid,challenger_name:ch.challengerName,challenged_uid:ch.challengedUid,challenged_name:ch.challengedName,winner_uid:null,status:'rejected',created_at:Date.now()});
+  supaDelete('challenge_votes','challenge_id=eq.current');
+  supaUpsert('challenges',{id:'current',status:'cleared',title:'',amount:0,winner_uid:null,type:'1v1'});
+  STATE.challenge=null;
+  go(CURRENT_GROUP_ID?'s-group-custom':'s-home');
 }
 
 function initVote1v1(){
@@ -2341,6 +2472,18 @@ function drawGroupVote(){
   var ch=STATE.challenge; if(!ch){ go('s-home'); return; }
   setText('vg-title','"'+ch.title+'"'); setText('vg-amount','€'+ch.amount);
   setText('vg-challenger-name',ch.challengerName); setText('vg-challenged-name',ch.challengedName);
+  var row=el('vg-btn-row');
+  if(row){
+    var candidates=challengeParticipantUids(ch);
+    var html='';
+    for(var i=0;i<candidates.length;i++){
+      var uid=candidates[i];
+      var name=challengeNameForUid(ch,uid);
+      var icon=uid===ch.challengerUid?'💪':'🏆';
+      html+='<button class="btn-half" onclick="groupVoteUid(\''+uid+'\')"><span style="font-size:18px">'+icon+'</span><span>'+name+'</span><span class="btn-half-sub">Ha vinto</span></button>';
+    }
+    row.innerHTML=html;
+  }
   var votes=ch.votes||{}, total=Object.keys(votes).length;
   setText('vg-vote-count',total+' vot'+(total===1?'o':'i'));
   var c1=0; for(var uid in votes){ if(votes[uid]===ch.challengerUid) c1++; }
@@ -2351,7 +2494,12 @@ function drawGroupVote(){
 
 function groupVote(who){
   var ch=STATE.challenge; if(!ch) return;
-  var winnerUid=who==='challenger'?ch.challengerUid:ch.challengedUid;
+  var winnerUid=who==='challenger'?ch.challengerUid:splitUids(ch.challengedUid)[0];
+  groupVoteUid(winnerUid);
+}
+
+function groupVoteUid(winnerUid){
+  var ch=STATE.challenge; if(!ch||!winnerUid) return;
   supaUpsert('challenge_votes',{challenge_id:'current',voter_uid:MY_UID,winner_uid:winnerUid});
   if(!ch.votes) ch.votes={}; ch.votes[MY_UID]=winnerUid;
   hide('vg-vote-section'); show('vg-voted'); checkMajority();
@@ -2362,15 +2510,16 @@ function simulateGroupVote(){ var ch=STATE.challenge; if(ch) resolveWinner(ch.ch
 function checkMajority(){
   var ch=STATE.challenge; if(!ch) return;
   var tally={}; for(var uid in (ch.votes||{})){ var v=ch.votes[uid]; tally[v]=(tally[v]||0)+1; }
-  for(var w in tally){ if(tally[w]>=2){ resolveWinner(w); return; } }
+  var needed=Math.floor(challengeParticipantUids(ch).length/2)+1;
+  if(needed<2)needed=2;
+  for(var w in tally){ if(tally[w]>=needed){ resolveWinner(w); return; } }
 }
 
 function resolveWinner(winnerUid){
   var ch=STATE.challenge; if(!ch) return;
   var chType=ch.type||'1v1';
-  var N=ch.challengedUid?ch.challengedUid.split(',').length:1;
-  var prize=ch.amount;
-  var totalPot = chType==='allvall' ? prize*(N+1) : prize*2;
+  var prize=parseFloat(ch.amount)||0;
+  var totalPot = totalPotForChallenge(ch);
 
   setBal(winnerUid,getBal(winnerUid)+totalPot);
   setEsc(winnerUid,0);
@@ -2379,8 +2528,7 @@ function resolveWinner(winnerUid){
     var loserUid=winnerUid===ch.challengerUid?ch.challengedUid:ch.challengerUid;
     setEsc(loserUid,0);
   }else{
-    var allUids=ch.challengedUid?ch.challengedUid.split(','):[];
-    allUids.push(ch.challengerUid);
+    var allUids=challengeParticipantUids(ch);
     for(var i=0;i<allUids.length;i++){
       var u=allUids[i].trim();
       if(u&&u!==winnerUid) setEsc(u,0);
@@ -2401,10 +2549,9 @@ function resolveWinner(winnerUid){
 function drawWinnerScreen(ch){
   if(!ch) return;
   var winnerUid=ch.winner||ch.winnerUid;
-  var winnerName=winnerUid===ch.challengerUid?ch.challengerName:(ch.challengedName||'');
-  if(winnerName.indexOf(',')!==-1) winnerName=winnerName.split(',')[0];
+  var winnerName=challengeNameForUid(ch,winnerUid);
   var loserName=winnerUid===ch.challengerUid?ch.challengedName:ch.challengerName;
-  if(loserName && loserName.indexOf(',')!==-1) loserName=loserName.split(',')[0];
+  if(loserName && loserName.indexOf(',')!==-1) loserName=loserName.split(',')[0]+'...';
   var isMe=winnerUid===MY_UID;
   var pot=ch.totalPot||ch.amount*2;
   setText('w-emoji',isMe?'🏆':'😔'); setText('w-title',isMe?'Hai vinto!':winnerName+' ha vinto');

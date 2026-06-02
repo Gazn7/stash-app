@@ -2,20 +2,21 @@
 
 ## Cos'è questo progetto
 App mobile social per sfide tra amici con denaro demo in escrow.
-Single-page HTML app hostata su GitHub Pages, database Supabase.
+Single-page HTML app hostata su Vercel, database PostgreSQL standard.
 
 ## Stack
 - **Frontend:** HTML single file (`index.html`) — niente framework, JS vanilla
-- **Database:** Supabase REST API (no SDK, solo fetch diretti)
-- **Hosting:** GitHub Pages → `stashappindustries-ux.github.io/stash-app`
+- **Database:** PostgreSQL standard via API Vercel `/api/rest/v1/:table`
+- **Hosting:** Vercel
 - **Repository:** `https://github.com/stashappindustries-ux/stash-app`
 
-## Credenziali Supabase
-- **URL:** `https://fipgbniotxinkuzgcsgr.supabase.co`
-- **Anon JWT Key:** `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpcGdibmlvdHhpbmt1emdjc2dyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxOTEwNDYsImV4cCI6MjA5MTc2NzA0Nn0.Mi3rNaNaJreR1nR5PXBbqlBIdV-XLkO21K27hzPeJg8`
-- **RLS:** disabilitato su tutte le tabelle (UNRESTRICTED)
+## Backend
+- **API:** `/api/rest/v1/:table` compatibility layer
+- **DB env:** `POSTGRES_URL` or `DATABASE_URL`
+- **Schema:** `db/schema.sql`
+- **Migration:** `npm run db:migrate`
 
-## Tabelle Supabase
+## Tabelle Postgres
 | Tabella | Colonne chiave |
 |---|---|
 | `users` | uid, name, username, password, balance, escrow, last_seen |
@@ -53,10 +54,11 @@ Altre: `s-settings` · `s-deposit` · `s-withdraw`
 - 5 gruppi e 30 sfide nel DB
 
 ## Workflow deploy
-1. Modifica `index.html`
-2. `git add index.html && git commit -m "messaggio" && git push`
-3. GitHub Actions fa il deploy automatico (~30-60 secondi)
-4. Hard reload: Cmd+Shift+R
+1. Modifica `index.html` / `api/` / `db/schema.sql`
+2. `npm run test:e2e:mock`
+3. `git add . && git commit -m "messaggio" && git push`
+4. Vercel deploy automatico
+5. Se schema DB cambia: eseguire `npm run db:migrate` con `POSTGRES_URL`
 
 ## Bug noti / pendenti
 - Sfida "current" è una sola globale — limite architetturale accettabile per beta
