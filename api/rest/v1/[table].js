@@ -1,6 +1,6 @@
 const { Pool } = require('pg');
 
-const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL || process.env.STORAGE_URL;
 const pool = connectionString ? new Pool({
   connectionString,
   ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false }
@@ -145,7 +145,7 @@ async function handleDelete(req, res, table) {
 }
 
 module.exports = async function handler(req, res) {
-  if (!pool) return send(res, 500, { error: 'Missing POSTGRES_URL or DATABASE_URL' });
+  if (!pool) return send(res, 500, { error: 'Missing POSTGRES_URL, DATABASE_URL, or STORAGE_URL' });
 
   const table = req.query.table;
   if (!TABLES[table]) return send(res, 404, { error: 'Unknown table' });
