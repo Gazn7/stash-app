@@ -28,7 +28,7 @@ const TABLES = {
     upsert: ['group_id', 'uid']
   },
   history: {
-    columns: ['id', 'title', 'amount', 'challenger_uid', 'challenger_name', 'challenged_uid', 'challenged_name', 'winner_uid', 'status', 'created_at'],
+    columns: ['id', 'title', 'amount', 'challenger_uid', 'challenger_name', 'challenged_uid', 'challenged_name', 'winner_uid', 'status', 'created_at', 'type'],
     upsert: ['id']
   }
 };

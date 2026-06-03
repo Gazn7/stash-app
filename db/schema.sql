@@ -56,7 +56,8 @@ create table if not exists history (
   challenged_name text,
   winner_uid text,
   status text not null,
-  created_at bigint not null
+  created_at bigint not null,
+  type text not null default '1v1'
 );
 
 create index if not exists users_username_idx on users(username);

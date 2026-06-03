@@ -1220,6 +1220,7 @@ function fbGet(path,cb){
           challengedUid:r.challenged_uid,
           challengedName:r.challenged_name,
           winnerUid:r.winner_uid,
+          type:r.type||'1v1',
           status:r.status,
           ts:r.created_at
         };
@@ -1250,7 +1251,7 @@ function pollSupabase(){
     STATE.users=users;
     setBackendStatus('');
     onStateChange();
-  }).catch(function(e){console.error('pollSupabase users error:',e);setBackendStatus('Backend demo non raggiungibile. Verifica URL Supabase o connessione.');});
+  }).catch(function(e){console.error('pollSupabase users error:',e);setBackendStatus('Backend non raggiungibile. Verifica la connessione.');});
 
   supaGet('challenges','id=eq.current').then(function(rows){
     if(!Array.isArray(rows)||!rows.length){
@@ -1354,8 +1355,6 @@ function initFirebase(cb){
   if(!pollInterval)pollInterval=setInterval(pollSupabase,3000);
   if(cb)cb();
 }
-
-function addFallbackUser(){}
 
 // ===== STATE =====
 var STATE = { users:{}, challenge:null, groups:{} };
@@ -1472,8 +1471,6 @@ function selType(item){
   drawChallengeUsers(); checkChallenge();
 }
 var MY_DECLARED = false;
-var PIZZA_SEC = 47*60+23;
-var PIZZA_INT = null;
 var GROUP_CREATOR = null;
 var BLOCKED = ['morte','morire','muori','ammazzati','uccidi','cazzo','fanculo','vaffanculo','stronzo','stronza','puttana','troia','bastardo','bastarda','coglione','cogliona','merda','minchia','porco dio','porca madonna','porcodio','affanculo','figlio di'];
 
@@ -1726,9 +1723,14 @@ function drawWallet() {
     for(var i=0;i<Math.min(items.length,5);i++){
       var it=items[i],isW=it.winnerUid===MY_UID,isL=it.status==='accepted'||it.status==='pending';
       var isLoss=!isW&&!isL&&!!it.winnerUid;
+      var myStake=it.amount;
+      if(it.type==='1vall'&&it.challengerUid!==MY_UID){
+        var nChallenged=splitUids(it.challengedUid).length||1;
+        myStake=Math.round(it.amount/nChallenged*100)/100;
+      }
       var ic=isL?'🔒':isW?'✅':isLoss?'❌':'↩️';
       var bg=isL?'var(--amber-dim)':isW?'var(--accent-dim)':isLoss?'var(--red-dim)':'var(--bg3)';
-      var amt=isL?'€'+it.amount+' bloccati':isW?'+€'+it.amount:isLoss?'-€'+it.amount:'annullata';
+      var amt=isL?'€'+it.amount+' bloccati':isW?'+€'+it.amount:isLoss?'-€'+myStake:'annullata';
       var cls=isL?'tx-neu':isW?'tx-pos':isLoss?'tx-neg':'tx-neu';
       var vs=it.challengerUid===MY_UID?it.challengedName:it.challengerName;
       if(vs&&vs.indexOf(',')!==-1) vs=vs.split(',')[0]+'...';
@@ -1768,10 +1770,15 @@ function drawHistory() {
     for(var i=0;i<items.length;i++){
       var it=items[i],isW=it.winnerUid===MY_UID,isL=it.status==='accepted'||it.status==='pending';
       var isLoss=!isW&&!isL&&!!it.winnerUid;
-      if(isW){wins++;net+=it.amount;}else if(isLoss)net-=it.amount;
+      var myStake=it.amount;
+      if(it.type==='1vall'&&it.challengerUid!==MY_UID){
+        var nChallenged=splitUids(it.challengedUid).length||1;
+        myStake=Math.round(it.amount/nChallenged*100)/100;
+      }
+      if(isW){wins++;net+=it.amount;}else if(isLoss)net-=myStake;
       var ic=isL?'🔒':isW?'✅':isLoss?'❌':'↩️';
       var bg=isL?'var(--amber-dim)':isW?'var(--accent-dim)':isLoss?'var(--red-dim)':'var(--bg3)';
-      var amt=isL?'€'+it.amount+' bloccati':isW?'+€'+it.amount:isLoss?'-€'+it.amount:'annullata';
+      var amt=isL?'€'+it.amount+' bloccati':isW?'+€'+it.amount:isLoss?'-€'+myStake:'annullata';
       var cls=isL?'tx-neu':isW?'tx-pos':isLoss?'tx-neg':'tx-neu';
       var fType=isL?'live':isW?'win':isLoss?'lose':'lose';
       var vs=it.challengerUid===MY_UID?it.challengedName:it.challengerName;
@@ -2536,11 +2543,9 @@ function resolveWinner(winnerUid){
   }
 
   supaPatch('challenges','id=eq.current',{status:'resolved',winner_uid:winnerUid});
-  supaUpsert('history',{id:'h'+Date.now(),title:ch.title,amount:prize,challenger_uid:ch.challengerUid,challenger_name:ch.challengerName,challenged_uid:ch.challengedUid,challenged_name:ch.challengedName,winner_uid:winnerUid,status:'resolved',created_at:Date.now()});
+  supaUpsert('history',{id:'h'+Date.now(),title:ch.title,amount:prize,challenger_uid:ch.challengerUid,challenger_name:ch.challengerName,challenged_uid:ch.challengedUid,challenged_name:ch.challengedName,winner_uid:winnerUid,type:ch.type||'1v1',status:'resolved',created_at:Date.now()});
 
   supaDelete('challenge_votes','challenge_id=eq.current');
-  supaUpsert('challenges',{id:'current',status:'cleared',title:'',amount:0,winner_uid:null,type:'1v1'});
-  if(STATE.challenge) STATE.challenge.status='cleared';
 
   drawWinnerScreen({title:ch.title,amount:totalPot/2,challengerUid:ch.challengerUid,challengerName:ch.challengerName,challengedUid:ch.challengedUid,challengedName:ch.challengedName,winner:winnerUid,totalPot:totalPot});
   go('s-winner');
